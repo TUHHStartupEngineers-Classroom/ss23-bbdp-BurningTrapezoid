@@ -1,0 +1,13 @@
+name: sales_dashboard
+title: sales_dashboard
+username:
+account: burningtrapezoid
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 9345034
+bundleId: 7470401
+url: https://burningtrapezoid.shinyapps.io/sales_dashboard/
+when: 1689684478.12901
+lastSyncTime: 1689684478.12902
+asMultiple: FALSE
+asStatic: FALSE
