@@ -1,0 +1,332 @@
+---
+title: "Sales Dashboard"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(shiny)
+library(DT)
+
+# Core
+library(tidyverse)
+library(lubridate)
+
+# Interactive Visualizations
+library(plotly)
+
+# Spatial Data
+library(raster)
+library(sf)
+
+# Currency formatting
+source("00_scripts/plot_sales.R")
+```
+
+```{r}
+# Bike data
+bikes_tbl      <- readRDS("01_data/bikes_tbl.rds")
+bikeshops_tbl  <- readRDS("01_data/bikeshops_tbl.rds")
+orderlines_tbl <- readRDS("01_data/orderlines_tbl.rds")
+
+bike_orderlines_tbl <- orderlines_tbl %>%
+    left_join(bikes_tbl,     by = c("product_id" = "bike_id")) %>%
+    left_join(bikeshops_tbl, by = c("customer_id" = "bikeshop_id")) %>%
+    mutate(total_price = price_euro * quantity)
+
+# German spatial data
+germany_sp <- getData('GADM', country='DE', level=1) 
+# Convert SpatialPolygonsDataFrame to an sf dataframe
+germany_sf <- st_as_sf(germany_sp) %>% 
+                  # Add english names
+                  mutate(VARNAME_1 = ifelse(is.na(VARNAME_1), NAME_1, VARNAME_1)) 
+```
+
+Sidebar {.sidebar}
+------------------------
+
+```{r}
+# Inputs
+checkboxGroupInput(inputId = "bike_type", 
+                   label   = h4("Bike Type"), 
+                   choices = c("Mountain" = "Mountain",
+                               "Road"       = "Road",
+                               "E-Bikes"       = "E-Bikes",
+                               "Gravel"       = "Gravel",
+                               "Hybrid / City"     = "Hybrid / City"), 
+                   selected = c("Mountain", "Road", "E-Bikes", "Gravel", "Hybrid / City"))
+
+checkboxGroupInput(inputId = "bike_family", 
+                   label   = h4("Bike Family"), 
+                   choices = c("Trail" = "Trail",
+                                "Race" = "Race",
+                                "Triathlon Bike" = "Triathlon Bike",
+                                "Dirt Jump" = "Dirt Jump",
+                                "City" = "City",
+                                "Cyclocross" = "Cyclocross",
+                                "Enduro" = "Enduro",
+                                "E-Mountain" = "E-Mountain",
+                                "All-Road" = "All-Road",
+                                "Endurance" = "Endurance",
+                                "E-City" = "E-City",
+                                "Cross-Country" = "Cross-Country",
+                                "Touring" = "Touring",
+                                "E-Gravel" = "E-Gravel",
+                                "Adventure" = "Adventure",
+                                "Downhill" = "Downhill",
+                                "Fat Bikes" = "Fat Bikes",
+                                "E-Fitness" = "E-Fitness",
+                                "E-Trekking" = "E-Trekking",
+                                "E-Road" = "E-Road"), 
+                   selected = c("Trail"))
+
+
+dateRangeInput(inputId = "date_range", 
+               label   = h4("Date Range"), 
+               start   = min(bike_orderlines_tbl$order_date), 
+               end     = max(bike_orderlines_tbl$order_date),
+               min     = min(bike_orderlines_tbl$order_date), 
+               max     = max(bike_orderlines_tbl$order_date), 
+               startview = "year")
+
+sliderInput(inputId = "slider_input", 
+            label   = h4("Price Range"), 
+            min     = min(bike_orderlines_tbl$price_euro),
+            max     = max(bike_orderlines_tbl$price_euro),
+            value   = c(1000, 5000),
+            step    = 10)
+```
+
+
+```{r}
+# Reset Button
+actionButton(inputId = "reset", 
+             label   = "Reset", 
+             icon    = icon("sync"))
+
+observeEvent(eventExpr = input$reset, handlerExpr = {
+  
+  updateCheckboxGroupInput(session  = session, 
+                           inputId  = "bike_type", 
+                           selected = c("Mountain", "Road", "E-Bikes", "Gravel", "Hybrid / City"))
+  
+  updateCheckboxGroupInput(session  = session, 
+                           inputId  = "bike_family", 
+                           selected = c("Trail"))
+  
+  updateDateRangeInput(session = session, 
+                       inputId = "date_range", 
+                       start   = min(bike_orderlines_tbl$order_date), 
+                       end     = max(bike_orderlines_tbl$order_date))
+
+  updateSliderInput(session = session, 
+                    inputId = "slider_input", 
+            value   = c(1000, 5000))
+  
+})
+```
+
+
+
+<!-- Column {data-width=500} -->
+<!-- ----------------------- -->
+
+<!-- ### Section - Checkbox Output -->
+
+<!-- ```{r} -->
+<!-- output$bike_type <- renderPrint(input$bike_type) -->
+
+<!-- textOutput(outputId = "bike_type") -->
+<!-- ``` -->
+
+<!-- ```{r} -->
+<!-- output$bike_family <- renderPrint(input$bike_family) -->
+
+<!-- textOutput(outputId = "bike_family") -->
+<!-- ``` -->
+
+<!-- ### Section - Date Range -->
+
+<!-- ```{r} -->
+<!-- output$date_range_values <- renderPrint(input$date_range) -->
+
+<!-- textOutput(outputId = "date_range_values") -->
+<!-- ``` -->
+
+<!-- ### Section - Slider Output -->
+
+<!-- ```{r} -->
+<!-- output$slider_values <- renderPrint(input$slider_input) -->
+
+<!-- textOutput(outputId = "slider_values") -->
+<!-- ``` -->
+
+
+Column {data-width=750}
+-----------------------
+
+### Over Time
+
+
+
+```{r}
+
+
+
+category_1 = "All"
+category_2 = "All"
+unit = "month"
+date_format = "%B %Y"
+ncol = 1
+scales = "free_y"
+interactive = TRUE
+  
+  
+over_time_reactive_plot <- reactive({
+
+  # filter
+  bike_orderlines_filtered <- bike_orderlines_tbl %>%
+    dplyr::filter(order_date >= input$date_range[1],
+                  order_date <= input$date_range[2],
+                  price_euro >= input$slider_input[1],
+                  price_euro <= input$slider_input[2],
+                  category_1 %in% input$bike_type,
+                  category_2 %in% input$bike_family)
+  
+  # Handle Data
+  
+  data_tbl <- bike_orderlines_filtered %>%
+    dplyr::select(order_date, category_1, category_2, total_price) %>%
+    mutate(date_rounded = floor_date(order_date, unit = unit)) %>%
+
+    group_by(date_rounded, category_1, category_2) %>%
+    summarise(total_sales = sum(total_price)) %>%
+    ungroup() %>%
+
+    mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format(date_format)}")) %>%
+
+    mutate(category_2 = as_factor(category_2) %>%
+             fct_reorder2(date_rounded, total_sales))
+
+  # Handle Inputs
+  cat_1_text <- str_to_lower(category_1)
+  cat_2_text <- str_to_lower(category_2)
+
+  # Create Filter Logic
+  if (cat_1_text != "all") {
+    data_tbl <- data_tbl %>%
+      filter(category_1 %>%
+               str_to_lower() %>%
+               str_detect(pattern = cat_1_text))
+  }
+
+  if (cat_2_text != "all") {
+    data_tbl <- data_tbl %>%
+      filter(category_2 %>%
+               str_to_lower() %>%
+               str_detect(pattern = cat_2_text))
+  }
+  
+  # Make Plot
+  g2 <- data_tbl %>%
+    ggplot(aes(x = date_rounded, y = total_sales, color = category_2)) +
+
+    # Geoms
+    geom_point(aes(text = label_text), color = "#2c3e50") +
+    geom_smooth(method = "loess", span = 0.2) +
+    facet_wrap(~ category_2, scales = scales, ncol = ncol) +
+
+    # Formatting
+    expand_limits(y = 0) +
+    theme(legend.position = "none",
+          strip.text.x = element_text(margin = margin(5, 5, 5, 5, unit = "pt"))) +
+    scale_y_continuous(labels = euro_format(scale = 1e-3, suffix = "K €")) +
+    labs(
+      title = "Sales By Category 2",
+      y = "", x = ""
+    )
+
+  # Static Vs Interactive Logic
+  if (interactive) {
+    return(ggplotly(g2, tooltip = "text"))
+  } else {
+    return(g2)
+  }
+  
+
+})
+
+```
+
+```{r}
+
+# render plot
+plotlyOutput(outputId = "data_graph")
+# output$data_graph <- renderPlotly({  
+#   # Make Plot
+#   g2 <- over_time_reactive_tbl %>%
+#     ggplot(aes(x = date_rounded, y = total_sales, color = category_2)) +
+# 
+#     # Geoms
+#     geom_point(aes(text = label_text), color = "#2c3e50") +
+#     geom_smooth(method = "loess", span = 0.2) +
+#     facet_wrap(~ category_2, scales = scales, ncol = ncol) +
+# 
+#     # Formatting
+#     expand_limits(y = 0) +
+#     theme(legend.position = "none",
+#           strip.text.x = element_text(margin = margin(5, 5, 5, 5, unit = "pt"))) +
+#     scale_y_continuous(labels = euro_format(scale = 1e-3, suffix = "K €")) +
+#     labs(
+#       title = "Sales By Category 2",
+#       y = "", x = ""
+#     )
+# 
+#   p_ly <- ggplotly(g2, tooltip = "text")
+# })
+output$data_graph <- renderPlotly(over_time_reactive_plot())
+```
+
+
+Column {data-width=750}
+---------------------------------------------------------------
+
+### By State
+```{r}
+geo_plot_tbl <- reactive({bike_orderlines_tbl %>%
+                  dplyr::filter(order_date >= input$date_range[1],
+                         order_date <= input$date_range[2],
+                         price_euro >= input$slider_input[1],
+                         price_euro <= input$slider_input[2],
+                         category_1 %in% input$bike_type,
+                         category_2 %in% input$bike_family) %>%
+                  group_by(state) %>%
+                  summarise(total_revenue = sum(total_price)) %>%
+                  ungroup() %>%
+                  right_join(germany_sf, by = c("state" = "VARNAME_1")) %>% 
+                  mutate(total_revenue = ifelse(is.na(total_revenue), 0, total_revenue)) %>% 
+                  mutate(label_text = str_glue("State: {state}
+                                         Revenue: {format_to_euro(total_revenue)}")) %>% 
+                  # Convert back to an sf object, that can be plotted
+                  st_as_sf()})
+```
+
+```{r}
+plotlyOutput(outputId = "map_plot")
+
+output$map_plot <- renderPlotly({plot_ly(geo_plot_tbl(), 
+        split      = ~NAME_1, 
+        color      = ~total_revenue,
+        colors     = "Blues",
+        stroke     = I("black"),
+        hoverinfo  = 'text', 
+        text       = ~label_text, 
+        hoveron    = "fills", 
+        showlegend = FALSE)}) 
+```
+

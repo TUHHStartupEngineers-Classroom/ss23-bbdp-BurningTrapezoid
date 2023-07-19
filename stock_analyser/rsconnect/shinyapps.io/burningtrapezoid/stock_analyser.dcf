@@ -1,0 +1,11 @@
+name: stock_analyser
+title:
+username:
+account: burningtrapezoid
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 9345028
+bundleId: 7372683
+url: https://burningtrapezoid.shinyapps.io/stock_analyser/
+when: 1687381091.12109
+lastSyncTime: 1687381091.12112
